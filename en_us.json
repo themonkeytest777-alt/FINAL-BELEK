@@ -1,0 +1,14 @@
+{
+  "category.turbominer": "TurboMiner",
+  "key.turbominer.menu": "Open menu",
+  "key.turbominer.fastmine": "Toggle fast mining",
+  "key.turbominer.speed": "Toggle speed",
+  "key.turbominer.fly": "Toggle fly",
+  "key.turbominer.automine": "Toggle auto mine",
+  "key.turbominer.ghost": "Toggle ghost",
+  "key.turbominer.noclip": "Toggle noclip",
+  "key.turbominer.biome": "Toggle biome compass",
+  "key.turbominer.biome_next": "Biome: next",
+  "key.turbominer.biome_prev": "Biome: previous",
+  "key.turbominer.biome_snow": "Biome: nearest snowy (auto)"
+}

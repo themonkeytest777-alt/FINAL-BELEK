@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "turbominer",
+  "version": "${version}",
+  "name": "TurboMiner",
+  "description": "Minage rapide, vitesse, fly, minage auto et ghost avec menu de reglages.",
+  "authors": ["Moi"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["com.turbominer.TurboMinerClient"]
+  },
+  "mixins": ["turbominer.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.15.11",
+    "minecraft": "1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

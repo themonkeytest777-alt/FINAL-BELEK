@@ -1,0 +1,129 @@
+name: Build TurboMiner
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Recuperer le depot
+        uses: actions/checkout@v4
+
+      - name: Remettre les fichiers dans leurs dossiers
+        shell: bash
+        run: |
+          set -eu
+          R=src/main/resources
+          mkdir -p "$R/assets/turbominer/lang"
+
+          # 1) Chaque .java est range selon sa ligne "package ..."
+          for f in *.java; do
+            [ -f "$f" ] || continue
+            pkg=$(grep -m1 '^package ' "$f" | sed 's/^package \(.*\);.*/\1/' | tr -d '\r' | tr . /)
+            if [ -z "$pkg" ]; then
+              echo "::error::Pas de ligne package dans $f"
+              exit 1
+            fi
+            mkdir -p "src/main/java/$pkg"
+            mv "$f" "src/main/java/$pkg/"
+          done
+
+          # 2) Ressources (accepte aussi les noms avec "_" a la place du point)
+          [ -f fabric_mod.json ] && mv fabric_mod.json fabric.mod.json || true
+          [ -f turbominer_mixins.json ] && mv turbominer_mixins.json turbominer.mixins.json || true
+          for f in fabric.mod.json turbominer.mixins.json; do
+            if [ -f "$f" ]; then mv "$f" "$R/"; fi
+          done
+          for f in en_us.json fr_fr.json; do
+            if [ -f "$f" ]; then mv "$f" "$R/assets/turbominer/lang/"; fi
+          done
+
+          # 3) Verification des fichiers indispensables
+          missing=0
+          for need in build.gradle gradle.properties settings.gradle \
+                      "$R/fabric.mod.json" "$R/turbominer.mixins.json" \
+                      src/main/java/com/turbominer/TurboMinerClient.java \
+                      src/main/java/com/turbominer/mixin/PlayerEntityMixin.java; do
+            if [ ! -f "$need" ]; then
+              echo "::error::Fichier manquant : $need"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+
+          echo "Sources trouvees :"
+          find src -type f | sort
+
+      - name: Installer Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Installer Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.10.2
+
+      - name: Compiler
+        run: gradle build --no-daemon --stacktrace
+
+      - name: Verifier le jar
+        shell: bash
+        run: |
+          set -eu
+          JAR=$(find build/libs -maxdepth 1 -name '*.jar' ! -name '*-sources.jar' ! -name '*-dev.jar' | sort | sed -n 1p)
+          if [ -z "$JAR" ]; then echo "::error::Aucun jar produit"; exit 1; fi
+          echo "Jar : $JAR"
+          LIST=$(unzip -Z1 "$JAR")
+          echo "$LIST"
+          bad=0
+          for need in fabric.mod.json turbominer.mixins.json \
+                      com/turbominer/TurboMinerClient.class \
+                      com/turbominer/Modules.class \
+                      com/turbominer/Ghost.class \
+                      com/turbominer/NoClip.class \
+                      com/turbominer/BiomeCompass.class \
+                      com/turbominer/gui/ControlScreen.class \
+                      com/turbominer/mixin/ClientPlayerEntityMixin.class \
+                      com/turbominer/mixin/ClientPlayerInteractionManagerAccessor.class \
+                      com/turbominer/mixin/PlayerEntityMixin.class \
+                      assets/turbominer/lang/en_us.json; do
+            if ! grep -Fxq "$need" <<< "$LIST"; then
+              echo "::error::Absent du jar : $need"
+              bad=1
+            fi
+          done
+          # le refmap doit exister et contenir les 3 methodes injectees (sinon les mixins plantent au lancement)
+          REF=$(grep -m1 'refmap\.json$' <<< "$LIST" || true)
+          if [ -z "$REF" ]; then
+            echo "::error::Refmap absent du jar"; bad=1
+          else
+            REFTXT=$(unzip -p "$JAR" "$REF")
+            for m in tickMovement sendMovementPackets getBlockBreakingSpeed blockBreakingCooldown; do
+              case "$REFTXT" in
+                *"$m"*) ;;
+                *) echo "::error::Refmap sans $m"; bad=1 ;;
+              esac
+            done
+          fi
+          MOD=$(unzip -p "$JAR" fabric.mod.json)
+          case "$MOD" in
+            *'${version}'*) echo "::error::Version non remplacee dans fabric.mod.json"; bad=1 ;;
+          esac
+          [ "$bad" -eq 0 ]
+          mkdir -p dist
+          cp "$JAR" dist/TurboMiner.jar
+
+      - name: Envoyer le jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurboMiner
+          path: dist/TurboMiner.jar
+          if-no-files-found: error
